@@ -114,11 +114,27 @@ uint16_t ISO144434ProcessBlock(uint8_t* Buffer, uint16_t ByteCount, uint16_t Bit
          * NOTE: Some PCD implementations do a memcmp() over ATS bytes, which is completely wrong.
          */
         Iso144434CardID = Buffer[1] & 0x0F;
-        memcpy(&Buffer[0], &Picc.ATSBytes[1], 4);
-        Buffer[4] = 0x80; /* T1: dummy value for historical bytes */
+        //memcpy(&Buffer[0], &Picc.ATSBytes[1], 4);
+        //Buffer[4] = 0x80; /* T1: dummy value for historical bytes */
+	//ByteCount = 5;
+        
+        Buffer[0] = 0x0C;
+        Buffer[1] = 0x75;
+        Buffer[2] = 0x77;
+        Buffer[3] = 0x80;
+        Buffer[4] = 0x02;
+        Buffer[5] = 0xc1;
+        Buffer[6] = 0x05;
+        Buffer[7] = 0x2f;
+        Buffer[8] = 0x2f;
+        Buffer[9] = 0x01;
+        Buffer[10] = 0xbc;
+        Buffer[11] = 0xd6;
+        Buffer[12] = 0x60;
+        Buffer[13] = 0xd3;
 
         ISO144434SwitchState(ISO14443_4_STATE_ACTIVE);
-        ByteCount = 5;
+        ByteCount = 14;
         const char *debugPrintStr = PSTR("ISO14443-4: SEND RATS");
 	    LogDebuggingMsg(debugPrintStr);
         return ByteCount * BITS_PER_BYTE;
@@ -218,6 +234,12 @@ uint16_t ISO144434ProcessBlock(uint8_t* Buffer, uint16_t ByteCount, uint16_t Bit
                 const char *debugPrintStr = PSTR("ISO14443-4: S-BLK");
 	            LogDebuggingMsg(debugPrintStr);
                 break;
+            } else if (PCB == 0xD1) {
+            	Buffer[0] = 0xD1;
+            	Buffer[1] = 0xFA;
+            	Buffer[2] = 0x96;
+            	ByteCount = 3;
+            	return ByteCount * BITS_PER_BYTE;
             }
             const char *debugPrintStr5 = PSTR("ISO14443-4: PCB_S_BLK NO_RESP");
 	        LogDebuggingMsg(debugPrintStr5);
@@ -357,9 +379,9 @@ uint16_t ISO144433APiccProcess(uint8_t* Buffer, uint16_t BitCount) {
                 const char *debugPrintStr = PSTR("ISO14443-4: Select NAK");
 	            LogDebuggingMsg(debugPrintStr);
             }
-            if(BitCount > 0) {
-                //ISO14443AAppendCRCA(Buffer, (BitCount + BITS_PER_BYTE - 1) / BITS_PER_BYTE);
-                //BitCount += ISO14443A_CRC_BYTES_FRAME_SIZE;
+            if(BitCount == 8) {
+                ISO14443AAppendCRCA(Buffer, (BitCount + BITS_PER_BYTE - 1) / BITS_PER_BYTE);
+                BitCount += ISO14443A_CRC_BYTES_FRAME_SIZE;
             }
             return BitCount;
         }
@@ -383,9 +405,9 @@ uint16_t ISO144433APiccProcess(uint8_t* Buffer, uint16_t BitCount) {
                 const char *debugPrintStr = PSTR("Incorrect Select value (R2)");
                 LogDebuggingMsg(debugPrintStr);
 	         }
-              if(BitCount > 0) {
-                  //ISO14443AAppendCRCA(Buffer, (BitCount + BITS_PER_BYTE - 1) / BITS_PER_BYTE);
-                  //BitCount += ISO14443A_CRC_BYTES_FRAME_SIZE;
+              if(BitCount == 8) {
+                  ISO14443AAppendCRCA(Buffer,( BitCount + BITS_PER_BYTE - 1) / BITS_PER_BYTE);
+                  BitCount += ISO14443A_CRC_BYTES_FRAME_SIZE;
               }
               return BitCount;
         }
