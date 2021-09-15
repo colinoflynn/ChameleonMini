@@ -168,12 +168,12 @@ uint16_t ISO144434ProcessBlock(uint8_t* Buffer, uint16_t ByteCount, uint16_t Bit
             }
             /* 7.5.3.2, rule D: toggle on each I-block */
             Iso144434BlockNumber = MyBlockNumber = !MyBlockNumber;
-            if (PCB & ISO14443_PCB_I_BLOCK_CHAINING_MASK) {
-                /* Currently not supported => the frame is ignored */
-                const char *debugPrintStr = PSTR("ISO144434ProcessBlock: ISO14443_PCB_I_BLOCK -- %d");
-		        DEBUG_PRINT_P(debugPrintStr, __LINE__);
-                return ISO14443A_APP_NO_RESPONSE;
-            }
+            //if (PCB & ISO14443_PCB_I_BLOCK_CHAINING_MASK) {
+            //    /* Currently not supported => the frame is ignored */
+            //    const char *debugPrintStr = PSTR("ISO144434ProcessBlock: ISO14443_PCB_I_BLOCK -- %d");
+	    //	        DEBUG_PRINT_P(debugPrintStr, __LINE__);
+            //    return ISO14443A_APP_NO_RESPONSE;
+            //}
 
             /* Build the prologue for the response */
             /* NOTE: According to the std, incoming/outgoing prologue lengths are equal at all times */
@@ -246,11 +246,13 @@ uint16_t ISO144434ProcessBlock(uint8_t* Buffer, uint16_t ByteCount, uint16_t Bit
             return ISO14443A_APP_NO_RESPONSE;
         }
         break;
-    }
+    }              
 
-    //ISO14443AAppendCRCA(Buffer, ByteCount);
-    //ByteCount += ISO14443A_CRCA_SIZE * BITS_PER_BYTE;
-    return ISO14443A_APP_NO_RESPONSE;
+    ISO14443AAppendCRCA(Buffer, ByteCount);
+    ByteCount += 2;
+    
+    return ByteCount * BITS_PER_BYTE;
+    //return ISO14443A_APP_NO_RESPONSE;
     
     /* (Old code) Stash the block for possible retransmissions */
     //const char *debugPrintStr = PSTR("ISO14443-4: STASHING FOR RE-TRANS");
@@ -425,7 +427,7 @@ uint16_t ISO144433APiccProcess(uint8_t* Buffer, uint16_t BitCount) {
 	       return ISO14443A_APP_NO_RESPONSE;
         }
         /* Forward to ISO/IEC 14443-4 processing code */
-        uint8_t ReturnBits = ISO144434ProcessBlock(Buffer, (BitCount + BITS_PER_BYTE - 1) / BITS_PER_BYTE, BitCount);
+        uint16_t ReturnBits = ISO144434ProcessBlock(Buffer, (BitCount + BITS_PER_BYTE - 1) / BITS_PER_BYTE, BitCount);
 	   const char *debugPrintStr2 = PSTR("ISO14443-4: ACTIVE RET");
 	   LogDebuggingMsg(debugPrintStr2);
         return ReturnBits;

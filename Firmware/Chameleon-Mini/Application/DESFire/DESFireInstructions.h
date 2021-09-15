@@ -94,6 +94,10 @@ typedef enum DESFIRE_FIRMWARE_ENUM_PACKING {
     CMD_ABORT_TRANSACTION = 0xA7,
     CMD_CONTINUE =  0xAF,
     
+    /* EV Plus 1 Hacks */
+    CMD_MFP_EV1_AUTH1 = 0x70,
+    CMD_MFP_EV1_AUTH2 = 0x72,
+    
     /* ISO7816 Command Set Support: */
     CMD_ISO7816_SELECT = 0xA4, 
     CMD_ISO7816_GET_CHALLENGE = 0x84, 
@@ -199,4 +203,9 @@ uint16_t ISO7816CmdUpdateBinary(uint8_t *Buffer, uint16_t ByteCount);
 uint16_t ISO7816CmdReadRecords(uint8_t *Buffer, uint16_t ByteCount);
 uint16_t ISO7816CmdAppendRecord(uint8_t *Buffer, uint16_t ByteCount);
 
+/* MFP EV1 Commands */
+
+uint16_t MFPEV1AuthFirst(uint8_t* Buffer, uint16_t ByteCount);
+uint16_t MFPEV1AuthContinue(uint8_t* Buffer, uint16_t ByteCount);
+uint16_t MFPEV1ReadEMM(uint8_t* Buffer, uint16_t ByteCount);
 #endif

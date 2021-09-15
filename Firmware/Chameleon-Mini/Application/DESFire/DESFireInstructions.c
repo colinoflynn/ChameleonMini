@@ -33,6 +33,7 @@ This notice must be retained at the top of all source files where indicated.
 #include "../../Memory.h"
 #include "../../Common.h"
 #include "../../Random.h"
+#include "../CryptoAES128.h"
 
 #include "DESFireInstructions.h"
 #include "DESFirePICCControl.h"
@@ -286,6 +287,24 @@ const __flash DESFireCommand DESFireCommandSet[] = {
           .insDesc = (const __flash char[]) { "ISO7816_Append_Record" },
           .insFunc = &ISO7816CmdAppendRecord
      }
+     ,
+     {
+          .insCode = CMD_MFP_EV1_AUTH1, 
+          .insDesc = (const __flash char[]) { "MFP EV1 AUTH1" },
+          .insFunc = &MFPEV1AuthFirst
+     }
+     ,
+     {
+          .insCode = CMD_MFP_EV1_AUTH2, 
+          .insDesc = (const __flash char[]) { "MFP EV1 AUTH2" },
+          .insFunc = &MFPEV1AuthContinue
+     }
+     ,
+     {
+          .insCode = 0x31, 
+          .insDesc = (const __flash char[]) { "MFP READ ENCMM" },
+          .insFunc = &MFPEV1ReadEMM
+     }
 };
 
 uint16_t CallInstructionHandler(uint8_t *Buffer, uint16_t ByteCount) {
@@ -293,6 +312,7 @@ uint16_t CallInstructionHandler(uint8_t *Buffer, uint16_t ByteCount) {
          Buffer[0] = STATUS_PARAMETER_ERROR;
          return DESFIRE_STATUS_RESPONSE_SIZE;
     }
+    
     uint8_t callingInsCode = Buffer[0];
     uint32_t insLookupTableBuf = &DESFireCommandSet[0];
     uint8_t cmdSetLength = sizeof(DESFireCommandSet) / sizeof(DESFireCommand);
@@ -412,6 +432,326 @@ uint16_t DesfireCmdFreeMemory(uint8_t *Buffer, uint16_t ByteCount) {
     Buffer[2] = STATUS_OPERATION_OK;
     return DESFIRE_STATUS_RESPONSE_SIZE + 2;
 }
+
+#include "/~/dev/MFPSecrets.h"
+
+static uint8_t MFPRandomA[16] = {0};
+static uint8_t MFPRandomB[16] = {0x43, 0x48, 0xa5, 0xf2, 0xc1, 0x3f, 0xd2, 0xd6, 0x41, 0xb4, 0x68, 0xa1, 0x47, 0x71, 0x28, 0x8c};
+
+static uint8_t fixedkey[16] = SECTOR_FIXED_KEY;
+static uint8_t kenc[16];
+static uint8_t kmac[16];
+
+static CryptoAESConfig_t ctx_fixed;
+static CryptoAESConfig_t ctx_kenc;
+static CryptoAESConfig_t ctx_kmac;
+
+/*
+ * MFP Key Hacks
+ */
+uint16_t MFPEV1AuthFirst(uint8_t* Buffer, uint16_t ByteCount) {
+
+    //if (ByteCount != 4) {
+    //    Buffer[0] = STATUS_LENGTH_ERROR;
+    //    return DESFIRE_STATUS_RESPONSE_SIZE;
+    //}
+
+    uint16_t ki = Buffer[1] | (uint16_t)(Buffer[2] << 8);   
+   
+    CryptoAESGetConfigDefaults(&ctx_fixed);
+    CryptoAESInitContext(&ctx_fixed);
+    CryptoAESEncryptBuffer(16, MFPRandomB, &Buffer[1], NULL, fixedkey);
+   
+    Buffer[0] = 0x90;
+
+    return DESFIRE_STATUS_RESPONSE_SIZE + 16;
+}
+
+
+uint16_t MFPEV1AuthContinue(uint8_t* Buffer, uint16_t ByteCount) {
+
+    //if (ByteCount != 33) {
+    //    Buffer[0] = STATUS_LENGTH_ERROR;
+    //    return DESFIRE_STATUS_RESPONSE_SIZE;
+    //}
+
+    uint8_t MFPRandomAB[32];
+    
+    CryptoAESInitContext(&ctx_fixed);
+    CryptoAESDecryptBuffer(32, MFPRandomAB, &Buffer[1], NULL, fixedkey);  
+        
+    Buffer[0] = 0x90;
+    
+    memcpy(MFPRandomA, MFPRandomAB, 16);
+    
+    if (memcmp(&MFPRandomAB[16], &MFPRandomB[1], 15) != 0){
+        Buffer[0] = STATUS_INTEGRITY_ERROR; /* Not sure on correct error, mostly a flag externally */
+        return DESFIRE_STATUS_RESPONSE_SIZE;
+    }
+       
+    MFPRandomAB[0] = 192; /*TODO TI - what should this be?*/
+    MFPRandomAB[1] = 104;
+    MFPRandomAB[2] = 13;
+    MFPRandomAB[3] = 158;
+    
+    memcpy(&MFPRandomAB[4], &MFPRandomA[1], 15);
+    MFPRandomAB[19] = MFPRandomA[0];
+    
+    MFPRandomAB[20] = 0; /*PIC*/
+    MFPRandomAB[21] = 0; /*PIC?*/
+    MFPRandomAB[22] = 0; /*PIC?*/
+    MFPRandomAB[23] = 0; /*PIC?*/
+    MFPRandomAB[24] = 0; /*PIC?*/
+    MFPRandomAB[25] = 0; /*PIC?*/
+    
+    MFPRandomAB[26] = 0; /*PCD*/
+    MFPRandomAB[27] = 0; /*PCD?*/
+    MFPRandomAB[28] = 0; /*PCD?*/
+    MFPRandomAB[29] = 0; /*PCD?*/
+    MFPRandomAB[30] = 0; /*PCD?*/
+    MFPRandomAB[31] = 0; /*PCD?*/       
+      
+    CryptoAESInitContext(&ctx_fixed);
+    CryptoAESEncryptBuffer(32, MFPRandomAB, &Buffer[1], NULL, fixedkey);      
+
+    kenc[0] = MFPRandomA[11];
+    kenc[1] = MFPRandomA[12];
+    kenc[2] = MFPRandomA[13];
+    kenc[3] = MFPRandomA[14];
+    kenc[4] = MFPRandomA[15];    
+    kenc[5] = MFPRandomB[11];
+    kenc[6] = MFPRandomB[12];
+    kenc[7] = MFPRandomB[13];
+    kenc[8] = MFPRandomB[14];
+    kenc[9] = MFPRandomB[15];
+    kenc[10] = MFPRandomA[4] ^ MFPRandomB[4];
+    kenc[11] = MFPRandomA[5] ^ MFPRandomB[5];
+    kenc[12] = MFPRandomA[6] ^ MFPRandomB[6];
+    kenc[13] = MFPRandomA[7] ^ MFPRandomB[7];
+    kenc[14] = MFPRandomA[8] ^ MFPRandomB[8];
+    kenc[15] = 0x11;
+    
+ 
+    kmac[0] = MFPRandomA[7];
+    kmac[1] = MFPRandomA[8];
+    kmac[2] = MFPRandomA[9];
+    kmac[3] = MFPRandomA[10];
+    kmac[4] = MFPRandomA[11];    
+    kmac[5] = MFPRandomB[7];
+    kmac[6] = MFPRandomB[8];
+    kmac[7] = MFPRandomB[9];
+    kmac[8] = MFPRandomB[10];
+    kmac[9] = MFPRandomB[11];
+    kmac[10] = MFPRandomA[0] ^ MFPRandomB[0];
+    kmac[11] = MFPRandomA[1] ^ MFPRandomB[1];
+    kmac[12] = MFPRandomA[2] ^ MFPRandomB[2];
+    kmac[13] = MFPRandomA[3] ^ MFPRandomB[3];
+    kmac[14] = MFPRandomA[4] ^ MFPRandomB[4];
+    kmac[15] = 0x22;
+
+    CryptoAESGetConfigDefaults(&ctx_kenc);
+    CryptoAESInitContext(&ctx_kenc);
+    CryptoAESEncryptBuffer(16, kenc, kenc, NULL, fixedkey);
+    CryptoAESGetConfigDefaults(&ctx_kmac);
+    CryptoAESInitContext(&ctx_kmac);
+    CryptoAESEncryptBuffer(16, kmac, kmac, NULL, fixedkey);
+
+    return DESFIRE_STATUS_RESPONSE_SIZE + 32;
+}
+
+
+static uint8_t data_store[] = DATA_STORE_INIT_VALUE;
+
+
+/* https://github.com/flexibity-team/AES-CMAC-RFC*/
+#define BLOCK_SIZE 16
+#define LAST_INDEX (BLOCK_SIZE - 1)
+
+
+/* For CMAC Calculation */
+static unsigned const char const_Rb[BLOCK_SIZE] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x87 };
+static unsigned const char const_Zero[BLOCK_SIZE] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+
+void xor_128(const unsigned char *a, const unsigned char *b, unsigned char *out) {
+	int i;
+	for (i = 0; i < BLOCK_SIZE; i++) {
+		out[i] = a[i] ^ b[i];
+	}
+}
+
+static void padding_AES(const unsigned char *lastb, unsigned char *pad, int length) {
+	int j;
+	length = length % BLOCK_SIZE;
+
+	if(length == 0){
+		memcpy(pad, lastb, BLOCK_SIZE);
+		return;
+	}
+
+	/* original last block */
+	for (j = 0; j < BLOCK_SIZE; j++) {
+		if (j < length) {
+			pad[j] = lastb[j];
+		} else {
+			pad[j] = 0x00;
+		}
+	}
+}
+
+
+/* AES-CMAC Generation Function */
+
+static void leftshift_onebit(const unsigned char *input, unsigned char *output) {
+	int i;
+	unsigned char overflow = 0;
+
+	for (i = LAST_INDEX; i >= 0; i--) {
+		output[i] = input[i] << 1;
+		output[i] |= overflow;
+		overflow = (input[i] & 0x80) ? 1 : 0;
+	}
+	return;
+}
+
+static void generate_subkey(const unsigned char *key, unsigned char *K1, unsigned char *K2) {
+	unsigned char L[BLOCK_SIZE];
+	unsigned char tmp[BLOCK_SIZE];
+
+    CryptoAESEncryptBlock(const_Zero, L, key, false);
+
+	if ((L[0] & 0x80) == 0) { /* If MSB(L) = 0, then K1 = L << 1 */
+		leftshift_onebit(L, K1);
+	} else { /* Else K1 = ( L << 1 ) (+) Rb */
+
+		leftshift_onebit(L, tmp);
+		xor_128(tmp, const_Rb, K1);
+	}
+
+	if ((K1[0] & 0x80) == 0) {
+		leftshift_onebit(K1, K2);
+	} else {
+		leftshift_onebit(K1, tmp);
+		xor_128(tmp, const_Rb, K2);
+	}
+	return;
+}
+
+static void padding(const unsigned char *lastb, unsigned char *pad, int length) {
+	int j;
+
+	/* original last block */
+	for (j = 0; j < BLOCK_SIZE; j++) {
+		if (j < length) {
+			pad[j] = lastb[j];
+		} else if (j == length) {
+			pad[j] = 0x80;
+		} else {
+			pad[j] = 0x00;
+		}
+	}
+}
+
+void AES_CMAC(const unsigned char *key, const unsigned char *input, int length, unsigned char *mac) {
+	unsigned char X[BLOCK_SIZE], Y[BLOCK_SIZE], M_last[BLOCK_SIZE], padded[BLOCK_SIZE];
+	unsigned char K1[BLOCK_SIZE], K2[BLOCK_SIZE];
+	int n, i, flag;
+	generate_subkey(key, K1, K2);
+
+	n = (length + LAST_INDEX) / BLOCK_SIZE; /* n is number of rounds */
+
+	if (n == 0) {
+		n = 1;
+		flag = 0;
+	} else {
+		if ((length % BLOCK_SIZE) == 0) { /* last block is a complete block */
+			flag = 1;
+		} else { /* last block is not complete block */
+			flag = 0;
+		}
+	}
+
+	if (flag) { /* last block is complete block */
+		xor_128(&input[BLOCK_SIZE * (n - 1)], K1, M_last);
+	} else {
+		padding(&input[BLOCK_SIZE * (n - 1)], padded, length % BLOCK_SIZE);
+		xor_128(padded, K2, M_last);
+	}
+
+	memset(X, 0, BLOCK_SIZE);
+	for (i = 0; i < n - 1; i++) {
+		xor_128(X, &input[BLOCK_SIZE * i], Y); /* Y := Mi (+) X  */
+		CryptoAESEncryptBlock(Y, X, key, false);
+	}
+
+	xor_128(X, M_last, Y);
+	CryptoAESEncryptBlock(Y, X, key, false);
+
+	memcpy(mac, X, BLOCK_SIZE);
+}
+
+
+int aes_cmac(uint8_t *iv, uint8_t *key, uint8_t *input, uint8_t *mac, int length) {
+    memset(mac, 0x00, 16);
+
+    AES_CMAC(key, input, length, mac);
+    
+    return 0;
+}
+
+int aes_cmac8(uint8_t *iv, uint8_t *key, uint8_t *input, uint8_t *mac, int length) {
+    uint8_t cmac_tmp[16] = {0};
+    memset(mac, 0x00, 8);
+
+    int res = aes_cmac(iv, key, input, cmac_tmp, length);
+    if (res)
+        return res;
+
+    for (int i = 0; i < 8; i++)
+        mac[i] = cmac_tmp[i * 2 + 1];
+
+    return 0;
+}
+
+
+uint16_t MFPEV1ReadEMM(uint8_t* Buffer, uint16_t ByteCount) {
+
+    uint8_t iv[16] = {0};
+    uint8_t macdata[128];
+    uint8_t datalen= 16*3;
+    
+    Buffer[0] = 0x90;//Respond OK
+    
+    iv[0] = 192; //TI
+    iv[1] = 104;
+    iv[2] = 13;
+    iv[3] = 158;
+    iv[4] = 1; //rdcnt
+    iv[8] = 1; //rdcnt
+    iv[12] = 1; //rdcnt    
+    CryptoAESInitContext(&ctx_kenc);
+    CryptoAESEncryptBuffer(datalen, data_store, &Buffer[1], iv, kenc);
+    
+    
+    macdata[0] = Buffer[0];
+    macdata[1] = 1; //CTR LSB
+    macdata[2] = 0; //CTR BSB
+    macdata[3] = 192; //TI 192, 104, 13, 158
+    macdata[4] = 104;
+    macdata[5] = 13;
+    macdata[6] = 158;
+    macdata[7] = 0x18; //block
+    macdata[8] = 0;
+    macdata[9] = 3; //blockcnt
+    memcpy(&macdata[10], &Buffer[1], datalen);
+    
+    aes_cmac8(NULL, kmac, macdata, &Buffer[datalen+1], datalen+10);
+
+    return DESFIRE_STATUS_RESPONSE_SIZE + 56;
+}
+
 
 /*
  * DESFire key management commands
@@ -1763,7 +2103,7 @@ uint16_t DesfireCmdAuthenticate3KTDEA2(uint8_t *Buffer, uint16_t ByteCount) {
     BYTE KeyId;
     BYTE cryptoKeyType, keySize;
     BYTE **Key, **IVBuffer;
-
+#if 0
     /* Set status for the next incoming command on error */
     DesfireState = DESFIRE_IDLE;
     /* Validate command length */
@@ -1811,11 +2151,11 @@ uint16_t DesfireCmdAuthenticate3KTDEA2(uint8_t *Buffer, uint16_t ByteCount) {
     /* Return the status on success */
     Buffer[0] = STATUS_OPERATION_OK;
     return DESFIRE_STATUS_RESPONSE_SIZE + CRYPTO_CHALLENGE_RESPONSE_BYTES;
-
+#endif
 }
 
 uint16_t DesfireCmdAuthenticateAES1(uint8_t *Buffer, uint16_t ByteCount) {
-    
+    #if 0
     BYTE KeyId, Status;
     BYTE keySize;
     BYTE **Key, **IVBuffer;
@@ -1892,10 +2232,11 @@ uint16_t DesfireCmdAuthenticateAES1(uint8_t *Buffer, uint16_t ByteCount) {
     DesfireState = DESFIRE_AES_AUTHENTICATE2;
     Buffer[0] = STATUS_ADDITIONAL_FRAME;
     return DESFIRE_STATUS_RESPONSE_SIZE + 2 * CRYPTO_CHALLENGE_RESPONSE_BYTES;
-
+#endif
 }
 
 uint16_t DesfireCmdAuthenticateAES2(uint8_t *Buffer, uint16_t ByteCount) {
+#if 0
     BYTE KeyId;
     BYTE cryptoKeyType, keySize;
     BYTE **Key, **IVBuffer;
@@ -1950,7 +2291,7 @@ uint16_t DesfireCmdAuthenticateAES2(uint8_t *Buffer, uint16_t ByteCount) {
     /* Return the status on success */
     Buffer[0] = STATUS_OPERATION_OK;
     return DESFIRE_STATUS_RESPONSE_SIZE + CRYPTO_AES_BLOCK_SIZE;
-   
+   #endif
 }
 
 uint16_t ISO7816CmdSelect(uint8_t *Buffer, uint16_t ByteCount) {

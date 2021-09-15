@@ -41,6 +41,8 @@ This notice must be retained at the top of all source files where indicated.
 #include "DESFire/DESFireLogging.h"
 #include "DESFire/DESFireUtils.h"
 
+
+
 DesfireStateType DesfireState = DESFIRE_HALT;
 DesfireStateType DesfirePreviousState = DESFIRE_IDLE;
 bool DesfireFromHalt = false;
@@ -118,9 +120,9 @@ uint16_t MifareDesfireProcessCommand(uint8_t* Buffer, uint16_t ByteCount) {
     }
     else if(Buffer[0] != STATUS_ADDITIONAL_FRAME) {
         uint16_t ReturnBytes = CallInstructionHandler(Buffer, ByteCount);
-        if(ReturnBytes > 0) {
-            LogEntry(LOG_INFO_DESFIRE_OUTGOING_DATA, Buffer, ReturnBytes);
-        }
+        //if(ReturnBytes > 0) {
+        //    LogEntry(LOG_INFO_DESFIRE_OUTGOING_DATA, Buffer, ReturnBytes);
+        //}
         return ReturnBytes;
     }
    
@@ -166,6 +168,7 @@ uint16_t MifareDesfireProcessCommand(uint8_t* Buffer, uint16_t ByteCount) {
 
 uint16_t MifareDesfireProcess(uint8_t* Buffer, uint16_t BitCount) {
     size_t ByteCount = (BitCount + BITS_PER_BYTE - 1) / BITS_PER_BYTE;
+ #if 0
     if(ByteCount >= 8 && DesfireCLA(Buffer[0]) && Buffer[2] == 0x00 && 
        Buffer[3] == 0x00 && Buffer[4] == ByteCount - 8) { // Wrapped native command structure: 
         /* Unwrap the PDU from ISO 7816-4 */
@@ -211,9 +214,10 @@ uint16_t MifareDesfireProcess(uint8_t* Buffer, uint16_t BitCount) {
         return BitCount * BITS_PER_BYTE;
     }
     else {
+ #endif
         /* ISO/IEC 14443-4 PDUs: No extra work */
-        return MifareDesfireProcessCommand(Buffer, ByteCount) * BITS_PER_BYTE;
-    }
+        return MifareDesfireProcessCommand(Buffer, ByteCount);
+ //   }
 
 }
 

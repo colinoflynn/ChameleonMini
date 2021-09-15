@@ -428,7 +428,7 @@ void ISO14443ACodecTask(void) {
 
             /* Call application if we received data */
             AnswerBitCount = ApplicationProcess(CodecBuffer, DemodBitCount);
-
+            
             if (AnswerBitCount & ISO14443A_APP_CUSTOM_PARITY) {
                 /* Application has generated it's own parity bits.
                  * Clear this option bit. */
