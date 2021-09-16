@@ -30,6 +30,7 @@ This notice must be retained at the top of all source files where indicated.
 #include "../../Log.h"
 #include "../../Random.h"
 #include "../CryptoTDEA.h"
+#include "../../../MFPSecrets.h"
 
 #include "DESFirePICCControl.h"
 #include "DESFirePICCHeaderLayout.h"
@@ -299,8 +300,8 @@ void FactoryFormatPiccEV0(void) {
     /* Wipe PICC data */
     memset(&Picc, PICC_FORMAT_BYTE, sizeof(Picc));
     /* Set a random new UID */
-    BYTE uidData[DESFIRE_UID_SIZE];
-    RandomGetBuffer(uidData, DESFIRE_UID_SIZE);
+    BYTE uidData[DESFIRE_UID_SIZE] = DEFAULT_UID;
+    //RandomGetBuffer(uidData, DESFIRE_UID_SIZE);
     memcpy(&Picc.Uid[0], uidData, DESFIRE_UID_SIZE);
     /* Initialize params to look like EV0 */
     Picc.StorageSize = DESFIRE_STORAGE_SIZE_4K;
@@ -319,8 +320,8 @@ void FactoryFormatPiccEV1(uint8_t StorageSize) {
     /* Wipe PICC data */
     memset(&Picc, PICC_FORMAT_BYTE, sizeof(Picc));
     /* Set a random new UID */
-    BYTE uidData[DESFIRE_UID_SIZE];
-    RandomGetBuffer(uidData, DESFIRE_UID_SIZE);
+    BYTE uidData[DESFIRE_UID_SIZE] = DEFAULT_UID;
+    //RandomGetBuffer(uidData, DESFIRE_UID_SIZE);
     memcpy(&Picc.Uid[0], uidData, DESFIRE_UID_SIZE);
     /* Initialize params to look like EV1 */
     Picc.StorageSize = StorageSize;

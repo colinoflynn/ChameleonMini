@@ -43,6 +43,7 @@ This notice must be retained at the top of all source files where indicated.
 #include "DESFireUtils.h"
 #include "DESFireMemoryOperations.h"
 #include "../MifareDESFire.h"
+#include "aescmac.h"
 
 DesfireSavedCommandStateType DesfireCommandState = { 0 };
 
@@ -433,7 +434,7 @@ uint16_t DesfireCmdFreeMemory(uint8_t *Buffer, uint16_t ByteCount) {
     return DESFIRE_STATUS_RESPONSE_SIZE + 2;
 }
 
-#include "/~/dev/MFPSecrets.h"
+#include "../../../MFPSecrets.h"
 
 static uint8_t MFPRandomA[16] = {0};
 static uint8_t MFPRandomB[16] = {0x43, 0x48, 0xa5, 0xf2, 0xc1, 0x3f, 0xd2, 0xd6, 0x41, 0xb4, 0x68, 0xa1, 0x47, 0x71, 0x28, 0x8c};
@@ -559,162 +560,7 @@ uint16_t MFPEV1AuthContinue(uint8_t* Buffer, uint16_t ByteCount) {
     return DESFIRE_STATUS_RESPONSE_SIZE + 32;
 }
 
-
 static uint8_t data_store[] = DATA_STORE_INIT_VALUE;
-
-
-/* https://github.com/flexibity-team/AES-CMAC-RFC*/
-#define BLOCK_SIZE 16
-#define LAST_INDEX (BLOCK_SIZE - 1)
-
-
-/* For CMAC Calculation */
-static unsigned const char const_Rb[BLOCK_SIZE] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x87 };
-static unsigned const char const_Zero[BLOCK_SIZE] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
-
-void xor_128(const unsigned char *a, const unsigned char *b, unsigned char *out) {
-	int i;
-	for (i = 0; i < BLOCK_SIZE; i++) {
-		out[i] = a[i] ^ b[i];
-	}
-}
-
-static void padding_AES(const unsigned char *lastb, unsigned char *pad, int length) {
-	int j;
-	length = length % BLOCK_SIZE;
-
-	if(length == 0){
-		memcpy(pad, lastb, BLOCK_SIZE);
-		return;
-	}
-
-	/* original last block */
-	for (j = 0; j < BLOCK_SIZE; j++) {
-		if (j < length) {
-			pad[j] = lastb[j];
-		} else {
-			pad[j] = 0x00;
-		}
-	}
-}
-
-
-/* AES-CMAC Generation Function */
-
-static void leftshift_onebit(const unsigned char *input, unsigned char *output) {
-	int i;
-	unsigned char overflow = 0;
-
-	for (i = LAST_INDEX; i >= 0; i--) {
-		output[i] = input[i] << 1;
-		output[i] |= overflow;
-		overflow = (input[i] & 0x80) ? 1 : 0;
-	}
-	return;
-}
-
-static void generate_subkey(const unsigned char *key, unsigned char *K1, unsigned char *K2) {
-	unsigned char L[BLOCK_SIZE];
-	unsigned char tmp[BLOCK_SIZE];
-
-    CryptoAESEncryptBlock(const_Zero, L, key, false);
-
-	if ((L[0] & 0x80) == 0) { /* If MSB(L) = 0, then K1 = L << 1 */
-		leftshift_onebit(L, K1);
-	} else { /* Else K1 = ( L << 1 ) (+) Rb */
-
-		leftshift_onebit(L, tmp);
-		xor_128(tmp, const_Rb, K1);
-	}
-
-	if ((K1[0] & 0x80) == 0) {
-		leftshift_onebit(K1, K2);
-	} else {
-		leftshift_onebit(K1, tmp);
-		xor_128(tmp, const_Rb, K2);
-	}
-	return;
-}
-
-static void padding(const unsigned char *lastb, unsigned char *pad, int length) {
-	int j;
-
-	/* original last block */
-	for (j = 0; j < BLOCK_SIZE; j++) {
-		if (j < length) {
-			pad[j] = lastb[j];
-		} else if (j == length) {
-			pad[j] = 0x80;
-		} else {
-			pad[j] = 0x00;
-		}
-	}
-}
-
-void AES_CMAC(const unsigned char *key, const unsigned char *input, int length, unsigned char *mac) {
-	unsigned char X[BLOCK_SIZE], Y[BLOCK_SIZE], M_last[BLOCK_SIZE], padded[BLOCK_SIZE];
-	unsigned char K1[BLOCK_SIZE], K2[BLOCK_SIZE];
-	int n, i, flag;
-	generate_subkey(key, K1, K2);
-
-	n = (length + LAST_INDEX) / BLOCK_SIZE; /* n is number of rounds */
-
-	if (n == 0) {
-		n = 1;
-		flag = 0;
-	} else {
-		if ((length % BLOCK_SIZE) == 0) { /* last block is a complete block */
-			flag = 1;
-		} else { /* last block is not complete block */
-			flag = 0;
-		}
-	}
-
-	if (flag) { /* last block is complete block */
-		xor_128(&input[BLOCK_SIZE * (n - 1)], K1, M_last);
-	} else {
-		padding(&input[BLOCK_SIZE * (n - 1)], padded, length % BLOCK_SIZE);
-		xor_128(padded, K2, M_last);
-	}
-
-	memset(X, 0, BLOCK_SIZE);
-	for (i = 0; i < n - 1; i++) {
-		xor_128(X, &input[BLOCK_SIZE * i], Y); /* Y := Mi (+) X  */
-		CryptoAESEncryptBlock(Y, X, key, false);
-	}
-
-	xor_128(X, M_last, Y);
-	CryptoAESEncryptBlock(Y, X, key, false);
-
-	memcpy(mac, X, BLOCK_SIZE);
-}
-
-
-int aes_cmac(uint8_t *iv, uint8_t *key, uint8_t *input, uint8_t *mac, int length) {
-    memset(mac, 0x00, 16);
-
-    AES_CMAC(key, input, length, mac);
-    
-    return 0;
-}
-
-int aes_cmac8(uint8_t *iv, uint8_t *key, uint8_t *input, uint8_t *mac, int length) {
-    uint8_t cmac_tmp[16] = {0};
-    memset(mac, 0x00, 8);
-
-    int res = aes_cmac(iv, key, input, cmac_tmp, length);
-    if (res)
-        return res;
-
-    for (int i = 0; i < 8; i++)
-        mac[i] = cmac_tmp[i * 2 + 1];
-
-    return 0;
-}
-
 
 uint16_t MFPEV1ReadEMM(uint8_t* Buffer, uint16_t ByteCount) {
 
