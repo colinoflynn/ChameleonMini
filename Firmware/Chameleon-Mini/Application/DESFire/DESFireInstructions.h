@@ -104,6 +104,12 @@ typedef enum DESFIRE_FIRMWARE_ENUM_PACKING {
     CMD_ISO7816_READ_RECORDS = 0xB2,
     CMD_ISO7816_APPEND_RECORD = 0xE2,
 
+#ifdef CONFIG_MF_DESFIRE_MFP_EXTENSIONS
+    /* EV Plus 1 Hacks */
+    CMD_MFP_EV1_AUTH1 = 0x70,
+    CMD_MFP_EV1_AUTH2 = 0x72,
+#endif
+
     /* Space for undocumented command codes --
      * Need command codes and parameters to make these work moving forward: */
     //CMD_READ_SIGNATURE /* See page 87 of AN12343.pdf (for Mifare DESFire Light tags) */

@@ -43,6 +43,10 @@ This notice must be retained at the top of all source files where indicated.
 #include "DESFireMemoryOperations.h"
 #include "../MifareDESFire.h"
 
+#ifdef CONFIG_MF_DESFIRE_MFP_EXTENSIONS
+#include "MFPInstructions.h"
+#endif
+
 DesfireSavedCommandStateType DesfireCommandState = { 0 };
 
 const __flash DESFireCommand DESFireCommandSet[] = {
@@ -286,6 +290,26 @@ const __flash DESFireCommand DESFireCommandSet[] = {
         .insDesc = (const __flash char[]) { "ISO7816_Append_Record" },
         .insFunc = &ISO7816CmdAppendRecord
     }
+#ifdef CONFIG_MF_DESFIRE_MFP_EXTENSIONS
+     ,
+     {
+          .insCode = CMD_MFP_EV1_AUTH1, 
+          .insDesc = (const __flash char[]) { "MFP EV1 AUTH1" },
+          .insFunc = &MFPEV1AuthFirst
+     }
+     ,
+     {
+          .insCode = CMD_MFP_EV1_AUTH2, 
+          .insDesc = (const __flash char[]) { "MFP EV1 AUTH2" },
+          .insFunc = &MFPEV1AuthContinue
+     }
+     ,
+     {
+          .insCode = 0x31, 
+          .insDesc = (const __flash char[]) { "MFP READ ENCMM" },
+          .insFunc = &MFPEV1ReadEMM
+     }
+#endif
 };
 
 uint16_t CallInstructionHandler(uint8_t *Buffer, uint16_t ByteCount) {
@@ -1300,6 +1324,7 @@ uint16_t EV0CmdGetValue(uint8_t *Buffer, uint16_t ByteCount) {
 }
 
 uint16_t EV0CmdCredit(uint8_t *Buffer, uint16_t ByteCount) {
+#ifndef CONFIG_MF_DESFIRE_MFP_REMOVELEGACY
     uint8_t Status;
     if (ByteCount != 1 + 1 + 4) {
         Status = STATUS_LENGTH_ERROR;
@@ -1349,9 +1374,11 @@ uint16_t EV0CmdCredit(uint8_t *Buffer, uint16_t ByteCount) {
     fileData.ValueFile.DirtyValue = nextValueAmount;
     Status = WriteFileControlBlock(fileNumber, &fileData);
     return ExitWithStatus(Buffer, Status, DESFIRE_STATUS_RESPONSE_SIZE);
+#endif
 }
 
 uint16_t EV0CmdDebit(uint8_t *Buffer, uint16_t ByteCount) {
+#ifndef CONFIG_MF_DESFIRE_MFP_REMOVELEGACY
     uint8_t Status;
     if (ByteCount != 1 + 1 + 4) {
         Status = STATUS_LENGTH_ERROR;
@@ -1403,9 +1430,11 @@ uint16_t EV0CmdDebit(uint8_t *Buffer, uint16_t ByteCount) {
     fileData.ValueFile.PreviousDebit -= debitAmount;
     Status = WriteFileControlBlock(fileNumber, &fileData);
     return ExitWithStatus(Buffer, Status, DESFIRE_STATUS_RESPONSE_SIZE);
+#endif
 }
 
 uint16_t EV0CmdLimitedCredit(uint8_t *Buffer, uint16_t ByteCount) {
+#ifndef CONFIG_MF_DESFIRE_MFP_REMOVELEGACY
     uint8_t Status;
     if (ByteCount != 1 + 1 + 4) {
         Status = STATUS_LENGTH_ERROR;
@@ -1449,9 +1478,11 @@ uint16_t EV0CmdLimitedCredit(uint8_t *Buffer, uint16_t ByteCount) {
     fileData.ValueFile.DirtyValue = nextValueAmount;
     Status = WriteFileControlBlock(fileNumber, &fileData);
     return ExitWithStatus(Buffer, Status, DESFIRE_STATUS_RESPONSE_SIZE);
+#endif
 }
 
 uint16_t EV0CmdReadRecords(uint8_t *Buffer, uint16_t ByteCount) {
+#ifndef CONFIG_MF_DESFIRE_MFP_REMOVELEGACY
     uint8_t Status;
     if (ByteCount != 1 + 1 + 3 + 3) {
         Status = STATUS_LENGTH_ERROR;
@@ -1502,9 +1533,11 @@ uint16_t EV0CmdReadRecords(uint8_t *Buffer, uint16_t ByteCount) {
         return ExitWithStatus(Buffer, Status, DESFIRE_STATUS_RESPONSE_SIZE);
     }
     return ReadDataFileIterator(Buffer);
+#endif
 }
 
 uint16_t EV0CmdWriteRecord(uint8_t *Buffer, uint16_t ByteCount) {
+#ifndef CONFIG_MF_DESFIRE_MFP_REMOVELEGACY
     uint8_t Status;
     if (ByteCount < 1 + 1 + 3 + 3) {
         Status = STATUS_LENGTH_ERROR;
@@ -1568,6 +1601,7 @@ uint16_t EV0CmdWriteRecord(uint8_t *Buffer, uint16_t ByteCount) {
     TransferState.WriteData.Sink.Pointer = dataWriteAddr + DESFIRE_BYTES_TO_BLOCKS(dataXferLength);
     Status = STATUS_OPERATION_OK;
     return ExitWithStatus(Buffer, Status, DESFIRE_STATUS_RESPONSE_SIZE);
+#endif
 }
 
 uint16_t EV0CmdClearRecords(uint8_t *Buffer, uint16_t ByteCount) {
@@ -1667,7 +1701,7 @@ uint16_t EV0CmdAbortTransaction(uint8_t *Buffer, uint16_t ByteCount) {
  */
 
 uint16_t DesfireCmdAuthenticate3KTDEA1(uint8_t *Buffer, uint16_t ByteCount) {
-
+#ifndef CONFIG_MF_DESFIRE_MFP_REMOVELEGACY
     BYTE KeyId, Status;
     BYTE keySize;
     BYTE **Key, **IVBuffer;
@@ -1737,10 +1771,11 @@ uint16_t DesfireCmdAuthenticate3KTDEA1(uint8_t *Buffer, uint16_t ByteCount) {
     DesfireState = DESFIRE_ISO_AUTHENTICATE2;
     Buffer[0] = STATUS_ADDITIONAL_FRAME;
     return DESFIRE_STATUS_RESPONSE_SIZE + CRYPTO_CHALLENGE_RESPONSE_BYTES;
-
+#endif
 }
 
 uint16_t DesfireCmdAuthenticate3KTDEA2(uint8_t *Buffer, uint16_t ByteCount) {
+#ifndef CONFIG_MF_DESFIRE_MFP_REMOVELEGACY
     BYTE KeyId;
     BYTE cryptoKeyType, keySize;
     BYTE **Key, **IVBuffer;
@@ -1792,11 +1827,11 @@ uint16_t DesfireCmdAuthenticate3KTDEA2(uint8_t *Buffer, uint16_t ByteCount) {
     /* Return the status on success */
     Buffer[0] = STATUS_OPERATION_OK;
     return DESFIRE_STATUS_RESPONSE_SIZE + CRYPTO_CHALLENGE_RESPONSE_BYTES;
-
+#endif
 }
 
 uint16_t DesfireCmdAuthenticateAES1(uint8_t *Buffer, uint16_t ByteCount) {
-
+#ifndef CONFIG_MF_DESFIRE_MFP_REMOVELEGACY
     BYTE KeyId, Status;
     BYTE keySize;
     BYTE **Key, **IVBuffer;
@@ -1872,10 +1907,11 @@ uint16_t DesfireCmdAuthenticateAES1(uint8_t *Buffer, uint16_t ByteCount) {
     DesfireState = DESFIRE_AES_AUTHENTICATE2;
     Buffer[0] = STATUS_ADDITIONAL_FRAME;
     return DESFIRE_STATUS_RESPONSE_SIZE + 2 * CRYPTO_CHALLENGE_RESPONSE_BYTES;
-
+#endif
 }
 
 uint16_t DesfireCmdAuthenticateAES2(uint8_t *Buffer, uint16_t ByteCount) {
+#ifndef CONFIG_MF_DESFIRE_MFP_REMOVELEGACY
     BYTE KeyId;
     BYTE cryptoKeyType, keySize;
     BYTE **Key, **IVBuffer;
@@ -1930,7 +1966,7 @@ uint16_t DesfireCmdAuthenticateAES2(uint8_t *Buffer, uint16_t ByteCount) {
     /* Return the status on success */
     Buffer[0] = STATUS_OPERATION_OK;
     return DESFIRE_STATUS_RESPONSE_SIZE + CRYPTO_AES_BLOCK_SIZE;
-
+#endif
 }
 
 uint16_t ISO7816CmdSelect(uint8_t *Buffer, uint16_t ByteCount) {

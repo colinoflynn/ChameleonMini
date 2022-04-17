@@ -50,7 +50,11 @@ This notice must be retained at the top of all source files where indicated.
  */
 
 /* Anticollision parameters */
+#ifndef MF_CONFIG_DESFIRE_ATQA_VALUE
 #define ATQA_VALUE              0x0344
+#else
+#define ATQA_VALUE              (MF_CONFIG_DESFIRE_ATQA_VALUE)
+#endif
 #define SAK_CL1_VALUE           (ISO14443A_SAK_INCOMPLETE)
 #define SAK_CL2_VALUE           (ISO14443A_SAK_COMPLETE_COMPLIANT)
 #define SAK_UID_NOT_FINISHED    0x04

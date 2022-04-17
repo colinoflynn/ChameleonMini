@@ -116,10 +116,21 @@ static uint16_t ISO144434ProcessBlock(uint8_t *Buffer, uint16_t ByteCount, uint1
              * NOTE: Some PCD implementations do a memcmp() over ATS bytes, which is completely wrong.
              */
             Iso144434CardID = Buffer[1] & 0x0F;
+
+#ifdef CONFIG_MF_DESFIRE_CUSTOM_RATS
+            const char _Temp_Rats[] = CONFIG_MF_DESFIRE_CUSTOM_RATS;
+            memcpy(Buffer, _Temp_Rats, sizeof(_Temp_Rats));
+            ByteCount = sizeof(_Temp_Rats);
+#else
             Buffer[0] = 0x06;
             memcpy(&Buffer[1], &Picc.ATSBytes[1], 4);
             Buffer[5] = 0x80; /* T1: dummy value for historical bytes */
             ByteCount = 6;    // NOT including CRC
+#endif
+            if (Buffer[0] != ByteCount) {
+                const char *debugPrintStr = PSTR("ISO14443-4: RATS BYTE0 != LENGTH");
+                LogDebuggingMsg(debugPrintStr);                
+            }
             ISO144434SwitchState(ISO14443_4_STATE_ACTIVE);
             const char *debugPrintStr = PSTR("ISO14443-4: SEND RATS");
             LogDebuggingMsg(debugPrintStr);
@@ -129,10 +140,12 @@ static uint16_t ISO144434ProcessBlock(uint8_t *Buffer, uint16_t ByteCount, uint1
             /* See: ISO/IEC 14443-4; 7.1 Block format */
 
             /* The next case should not happen: it is a baudrate change: */
+#ifndef CONFIG_MF_DESFIRE_IGNORE_PPS
             if ((Buffer[0] & 0xF0) == ISO14443A_CMD_PPS) {
                 ISO144434SwitchState(ISO14443_4_STATE_ACTIVE);
                 return GetAndSetBufferCRCA(Buffer, 1);
             }
+#endif
 
             /* Parse the prologue */
             PrologueLength = 1;
@@ -147,6 +160,7 @@ static uint16_t ISO144434ProcessBlock(uint8_t *Buffer, uint16_t ByteCount, uint1
                     return ISO14443A_APP_NO_RESPONSE;
                 }
             }
+            break;
         }
         case ISO14443_4_STATE_LAST: {
             return ISO14443A_APP_NO_RESPONSE;
@@ -164,12 +178,14 @@ static uint16_t ISO144434ProcessBlock(uint8_t *Buffer, uint16_t ByteCount, uint1
             }
             /* 7.5.3.2, rule D: toggle on each I-block */
             Iso144434BlockNumber = MyBlockNumber = !MyBlockNumber;
+#ifndef CONFIG_MF_DESFIRE_IBLOCK_PROCESS
             if (PCB & ISO14443_PCB_I_BLOCK_CHAINING_MASK) {
                 /* Currently not supported => the frame is ignored */
                 const char *debugPrintStr = PSTR("ISO144434ProcessBlock: ISO14443_PCB_I_BLOCK -- %d");
                 DEBUG_PRINT_P(debugPrintStr, __LINE__);
                 return ISO14443A_APP_NO_RESPONSE;
             }
+#endif
 
             /* Build the prologue for the response */
             /* NOTE: According to the std, incoming/outgoing prologue lengths are equal at all times */
@@ -180,7 +196,7 @@ static uint16_t ISO144434ProcessBlock(uint8_t *Buffer, uint16_t ByteCount, uint1
             }
             Buffer[0] = PCB;
             /* Let the DESFire application code process the input data */
-            ByteCount = MifareDesfireProcess(Buffer + PrologueLength, ByteCount - PrologueLength);
+            ByteCount = MifareDesfireProcessCommand(Buffer + PrologueLength, ByteCount - PrologueLength);
             /* Short-circuit in case the app decides not to respond at all */
             if (ByteCount == ISO14443A_APP_NO_RESPONSE) {
                 const char *debugPrintStr = PSTR("ISO14443-4: APP_NO_RESP");
@@ -190,6 +206,7 @@ static uint16_t ISO144434ProcessBlock(uint8_t *Buffer, uint16_t ByteCount, uint1
             ByteCount += PrologueLength;
             const char *debugPrintStr = PSTR("ISO14443-4: I-BLK");
             LogDebuggingMsg(debugPrintStr);
+            return GetAndSetBufferCRCA(Buffer, ByteCount);
             break;
         }
 
@@ -215,6 +232,7 @@ static uint16_t ISO144434ProcessBlock(uint8_t *Buffer, uint16_t ByteCount, uint1
             }
             const char *debugPrintStr6 = PSTR("ISO14443-4: R-BLK");
             LogDebuggingMsg(debugPrintStr6);
+            return GetAndSetBufferCRCA(Buffer, ByteCount);
             break;
         }
 
@@ -231,9 +249,17 @@ static uint16_t ISO144434ProcessBlock(uint8_t *Buffer, uint16_t ByteCount, uint1
                 LogDebuggingMsg(debugPrintStr);
                 return GetAndSetBufferCRCA(Buffer, ByteCount);
             }
+#ifdef CONFIG_MF_DESFIRE_SBLOCK_ALWAYS_RESPOND
+            Buffer[0] = PCB;
+            ByteCount = 1;
+            const char *debugPrintStr = PSTR("ISO14443-4:PCB_S-BLK Echo (%X)");
+            DEBUG_PRINT_P(debugPrintStr, PCB);
+            return GetAndSetBufferCRCA(Buffer, ByteCount);
+#else
             const char *debugPrintStr5 = PSTR("ISO14443-4: PCB_S_BLK NO_RESP");
             LogDebuggingMsg(debugPrintStr5);
             return ISO14443A_APP_NO_RESPONSE;
+#endif
         }
 
     }

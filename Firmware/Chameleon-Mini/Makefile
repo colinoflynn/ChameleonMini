@@ -93,8 +93,8 @@ SETTINGS	+= -DENABLE_EEPROM_SETTINGS
 
 #Set a default logging mode for debugging with the DESFire
 #emulation code:
-SETTINGS  += -DDESFIRE_DEFAULT_LOGGING_MODE=DEBUGGING
-#SETTINGS += -DDESFIRE_DEFAULT_LOGGING_MODE=OFF
+#SETTINGS  += -DDESFIRE_DEFAULT_LOGGING_MODE=DEBUGGING
+SETTINGS += -DDESFIRE_DEFAULT_LOGGING_MODE=OFF
 
 #Set a default testing mode setting (0 = OFF, non-NULL = ON):
 SETTINGS  += -DDESFIRE_DEFAULT_TESTING_MODE=0
@@ -132,9 +132,18 @@ SETTINGS  += -DDESFIRE_MIN_OUTGOING_LOGSIZE=1
 #in PROGMEM. Note that this will slow down the read times when accessing these tables:
 #SETTINGS  += -DDESFIRE_CRYPTO1_SAVE_SPACE
 
+# The following uses a custom RATS response in DESFIRE Mode. The first byte of the RAT should be the
+# length MINUS the CRC value but including the length value. In this example 0xC = 14, and then the
+# sizeof() the following array would be '12'. The remaining 2 bytes will be the CRC the code will add
+# automatically.
+SETTINGS += -DCONFIG_MF_DESFIRE_CUSTOM_RATS="{0x0c, 0x75, 0x77, 0x80, 0x02, 0xC1, 0x05, 0x2F, 0x2F, 0x01, 0xBC, 0xDB}"
+
 DESFIRE_MAINSRC = Application/DESFire
 
 DESFIRE_CONFIG_SETTINGS_BASE = $(SETTINGS) -DCONFIG_MF_DESFIRE_SUPPORT -DDESFIRE_CRYPTO1_SAVE_SPACE -UDEFAULT_CONFIGURATION
+DESFIREMFP_CONFIG_SETTINGS_BASE = $(SETTINGS) -DCONFIG_MF_DESFIRE_SUPPORT -DDESFIRE_CRYPTO1_SAVE_SPACE -UDEFAULT_CONFIGURATION \
+ -DCONFIG_MF_DESFIRE_MFP_EXTENSIONS -DCONFIG_MF_DESFIRE_MFP_REMOVELEGACY -DCONFIG_MF_DESFIRE_SBLOCK_ALWAYS_RESPOND \
+ -DCONFIG_MF_DESFIRE_IBLOCK_PROCESS -DCONFIG_MF_DESFIRE_IGNORE_PPS -DMF_CONFIG_DESFIRE_ATQA_VALUE=0x0044
 
 #Memory definitions and objcopy flags to include sections in binaries
 FLASH_DATA_ADDR = 0x10000  #Start of data section in flash
@@ -182,6 +191,7 @@ SRC	       += $(DESFIRE_MAINSRC)/../MifareDESFire.c \
                $(DESFIRE_MAINSRC)/DESFirePICCControl.c \
                $(DESFIRE_MAINSRC)/DESFirePICCHeaderLayout.c \
                $(DESFIRE_MAINSRC)/DESFireUtils.c
+SRC         += $(DESFIRE_MAINSRC)/MFPInstructions.c Application/CryptoAES128CMAC.c
 SRC         += $(LUFA_SRC_USB) $(LUFA_SRC_USBCLASS)
 LUFA_PATH    = ../LUFA
 CC_FLAGS     = -g0 -DUSE_LUFA_CONFIG_HEADER -DFLASH_DATA_ADDR=$(FLASH_DATA_ADDR) -DFLASH_DATA_SIZE=$(FLASH_DATA_SIZE) \
@@ -314,4 +324,6 @@ desfire: CONFIG_SETTINGS:=$(DESFIRE_CONFIG_SETTINGS_BASE) -DDEFAULT_CONFIGURATIO
 desfire: desfire-build
 desfire-dev: CONFIG_SETTINGS:=$(DESFIRE_CONFIG_SETTINGS_BASE) -DDEFAULT_CONFIGURATION=CONFIG_MF_DESFIRE_SUPPORT
 desfire-dev: desfire-build
+desfire-mfp: CONFIG_SETTINGS:=$(DESFIREMFP_CONFIG_SETTINGS_BASE) -DDEFAULT_CONFIGURATION=CONFIG_NONE
+desfire-mfp: desfire-build
 
