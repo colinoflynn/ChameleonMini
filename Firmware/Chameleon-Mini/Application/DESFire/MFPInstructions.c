@@ -183,13 +183,16 @@ uint16_t MFPEV1ReadEMM(uint8_t* Buffer, uint16_t ByteCount) {
 
     Buffer[0] = 0x90;//Respond OK
 
-    iv[0] = 192; //TI
-    iv[1] = 104;
-    iv[2] = 13;
-    iv[3] = 158;
-    iv[4] = 1; //rdcnt
-    iv[8] = 1; //rdcnt
-    iv[12] = 1; //rdcnt    
+    /* Response uses opposite order, with TI at end. */
+    iv[0] = 1; //rdcnt LSB
+               //wrcnt LSB+MSB+rdcntMSB are all 0, so not set as initialized to 0
+    iv[4] = 1; //rdcnt LSB
+    iv[8] = 1; //rdcnt LSB
+    iv[12] = 192;
+    iv[13] = 104;
+    iv[14] = 13;
+    iv[15] = 158;
+     
     CryptoAESInitContext(&ctx_kenc);
     CryptoAESEncryptBuffer(datalen, data_store, &Buffer[1], iv, kenc);
 
