@@ -123,8 +123,8 @@ uint16_t MifareDesfireProcessCommand(uint8_t *Buffer, uint16_t ByteCount) {
     if (Buffer[0] != STATUS_ADDITIONAL_FRAME) {
         return ISO14443A_APP_NO_RESPONSE;
     }
-
     uint16_t ReturnBytes = 0;
+#if !defined(CONFIG_MF_DESFIRE_MFP_EXTENSIONS)
     switch (DesfireState) {
         case DESFIRE_GET_VERSION2:
             ReturnBytes = EV0CmdGetVersion2(Buffer, ByteCount);
@@ -155,6 +155,7 @@ uint16_t MifareDesfireProcessCommand(uint8_t *Buffer, uint16_t ByteCount) {
             Buffer[0] = STATUS_PICC_INTEGRITY_ERROR;
             return DESFIRE_STATUS_RESPONSE_SIZE;
     }
+#endif
     return ReturnBytes;
 
 }

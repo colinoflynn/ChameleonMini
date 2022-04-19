@@ -37,7 +37,6 @@ This notice must be retained at the top of all source files where indicated.
 #include "../CryptoAES128.h"
 #include "../CryptoAES128CMAC.h"
 
-#include "DESFireInstructions.h"
 #include "MFPInstructions.h"
 #include "DESFirePICCControl.h"
 #include "DESFireCrypto.h"
@@ -46,6 +45,63 @@ This notice must be retained at the top of all source files where indicated.
 #include "DESFireUtils.h"
 #include "DESFireMemoryOperations.h"
 #include "../MifareDESFire.h"
+
+const __flash MFPCommand MFPCommandSet[] = {
+     {
+          .insCode = CMD_MFP_EV1_AUTH1, 
+          .insDesc = (const __flash char[]) { "MFP EV1 AUTH1" },
+          .insFunc = &MFPEV1AuthFirst
+     }
+     ,
+     {
+          .insCode = CMD_MFP_EV1_AUTH2, 
+          .insDesc = (const __flash char[]) { "MFP EV1 AUTH2" },
+          .insFunc = &MFPEV1AuthContinue
+     }
+     ,
+     {
+          .insCode = CMD_MFP_READ_EMM, 
+          .insDesc = (const __flash char[]) { "MFP READ ENCMM" },
+          .insFunc = &MFPEV1ReadEMM
+     }
+};
+
+uint16_t CallInstructionHandler(uint8_t *Buffer, uint16_t ByteCount) {
+    if (ByteCount == 0) {
+        Buffer[0] = STATUS_PARAMETER_ERROR;
+        return DESFIRE_STATUS_RESPONSE_SIZE;
+    }
+    uint8_t callingInsCode = Buffer[0];
+    uint32_t insLookupTableBuf = &MFPCommandSet[0];
+    uint8_t cmdSetLength = sizeof(MFPCommandSet) / sizeof(DESFireCommand);
+    uint8_t curInsIndex = 0;
+    while (curInsIndex < cmdSetLength) {
+        DESFireCommand dfCmd;
+        memcpy_P(&dfCmd, insLookupTableBuf + curInsIndex * sizeof(DESFireCommand), sizeof(DESFireCommand));
+        if (dfCmd.insCode == callingInsCode) {
+            if (dfCmd.insFunc == NULL) {
+                snprintf_P(__InternalStringBuffer, STRING_BUFFER_SIZE, PSTR("NOT IMPLEMENTED: %s!"), dfCmd.insDesc);
+                __InternalStringBuffer[STRING_BUFFER_SIZE - 1] = '\0';
+                uint8_t bufSize = StringLength(__InternalStringBuffer, STRING_BUFFER_SIZE);
+                LogEntry(LOG_INFO_DESFIRE_DEBUGGING_OUTPUT, (void *) __InternalStringBuffer, bufSize);
+                return CmdNotImplemented(Buffer, ByteCount);
+            }
+            return dfCmd.insFunc(Buffer, ByteCount);
+        }
+        curInsIndex += 1;
+    }
+    return ISO14443A_APP_NO_RESPONSE;
+}
+
+uint16_t ExitWithStatus(uint8_t *Buffer, uint8_t StatusCode, uint16_t DefaultReturnValue) {
+    Buffer[0] = StatusCode;
+    return DefaultReturnValue;
+}
+
+uint16_t CmdNotImplemented(uint8_t *Buffer, uint16_t ByteCount) {
+    Buffer[0] = STATUS_ILLEGAL_COMMAND_CODE;
+    return DESFIRE_STATUS_RESPONSE_SIZE;
+}
 
 static uint8_t MFPRandomA[16] = {0};
 static uint8_t MFPRandomB[16] = {0x43, 0x48, 0xa5, 0xf2, 0xc1, 0x3f, 0xd2, 0xd6, 0x41, 0xb4, 0x68, 0xa1, 0x47, 0x71, 0x28, 0x8c};
@@ -214,4 +270,4 @@ uint16_t MFPEV1ReadEMM(uint8_t* Buffer, uint16_t ByteCount) {
     return DESFIRE_STATUS_RESPONSE_SIZE + 56;
 }
 
-#endif /* CONFIG_MF_DESFIRE_SUPPORT */
+#endif /* CONFIG_MF_DESFIRE_MFP_EXTENSIONS */
