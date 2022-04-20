@@ -147,6 +147,7 @@ static uint16_t ISO144434ProcessBlock(uint8_t *Buffer, uint16_t ByteCount, uint1
                     return ISO14443A_APP_NO_RESPONSE;
                 }
             }
+            break;
         }
         case ISO14443_4_STATE_LAST: {
             return ISO14443A_APP_NO_RESPONSE;
