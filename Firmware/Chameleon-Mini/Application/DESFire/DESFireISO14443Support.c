@@ -217,6 +217,7 @@ static uint16_t ISO144434ProcessBlock(uint8_t *Buffer, uint16_t ByteCount, uint1
             }
             const char *debugPrintStr6 = PSTR("ISO14443-4: R-BLK");
             LogDebuggingMsg(debugPrintStr6);
+            return GetAndSetBufferCRCA(Buffer, ByteCount);
             break;
         }
 
